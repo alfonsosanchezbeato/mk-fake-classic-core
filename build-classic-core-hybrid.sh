@@ -13,12 +13,12 @@ get_assets() {
     mkdir -p "$CACHE"
     # get the snaps
     for snap in pc-kernel pc; do
-        snap download --channel=20 --basename="${snap}" --target-directory="$CACHE" "${snap}"
+        snap download --channel=22 --basename="${snap}" --target-directory="$CACHE" "${snap}"
         unsquashfs -n -d "$CACHE"/snap-"$snap" "$CACHE"/"$snap".snap
     done
     
     # get the ubuntu classic base
-    (cd "$CACHE" && wget -c http://cdimage.ubuntu.com/ubuntu-base/releases/20.04/release/ubuntu-base-20.04.1-base-amd64.tar.gz)
+    (cd "$CACHE" && wget -c http://cdimage.ubuntu.com/ubuntu-base/releases/22.04/release/ubuntu-base-22.04-base-amd64.tar.gz)
 }
 
 cleanup() {
@@ -81,7 +81,7 @@ populate_image() {
     sudo mount /dev/mapper/"$loop_data" "$MNT"/ubuntu-data
     
     # install things into the image
-    (cd "$MNT"/ubuntu-data && sudo tar xf "$CACHE"/ubuntu-base-20.04.1-base-amd64.tar.gz)
+    (cd "$MNT"/ubuntu-data && sudo tar xf "$CACHE"/ubuntu-base-22.04-base-amd64.tar.gz)
 
     # ESP partition just chainloads into ubuntu-boot
     # XXX: do we want this given that we don't have recovery systems?
@@ -143,7 +143,7 @@ elif [ -n "$kernel_status" ]; then
 fi
 
 if [ -e $prefix/$kernel ]; then
-menuentry "Run Ubuntu Core 20" {
+menuentry "Run Ubuntu Core 22" {
     # use $prefix because the symlink manipulation at runtime for kernel snap
     # upgrades, etc. should only need the /boot/grub/ directory, not the
     # /EFI/ubuntu/ directory
