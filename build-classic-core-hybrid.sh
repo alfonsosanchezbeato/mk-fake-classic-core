@@ -58,10 +58,10 @@ install_data_partition() {
     local DESTDIR=$1
     local CACHE=$2
 
-    set -x
-    sudo cp -a hooks/ "$DESTDIR"/
     # Copy base filesystem
     sudo tar -C "$DESTDIR" -xf "$CACHE"/ubuntu-base-22.04-base-amd64.tar.gz
+
+    # Run hooks
     # Create basic devices to be able to install packages
     [ -e "$DESTDIR"/dev/null ] || sudo mknod -m 666 "$DESTDIR"/dev/null c 1 3
     [ -e "$DESTDIR"/dev/zero ] || sudo mknod -m 666 "$DESTDIR"/dev/zero c 1 5
@@ -69,9 +69,25 @@ install_data_partition() {
     [ -e "$DESTDIR"/dev/urandom ] || sudo mknod -m 666 "$DESTDIR"/dev/urandom c 1 9
     # ensure resolving works inside the chroot
     sudo cp /etc/resolv.conf "$DESTDIR"/etc/resolv.conf
+    sudo cp -a hooks/ "$DESTDIR"/
     # Just this script for the moment
     sudo chroot "$DESTDIR" hooks/001-extra-packages.chroot
     sudo rm -rf "$DESTDIR"/hooks/
+
+    # Populate snapd data
+    cat > modeenv <<EOF
+mode=run
+base=core22_x1.snap
+gadget=pc_x1.snap
+current_kernels=pc-kernel_x1.snap
+model=canonical/ubuntu-core-22-pc-amd64
+grade=dangerous
+model_sign_key_id=9tydnLa6MTJ-jaQTFUXEwHl1yRx7ZS4K5cyFDhYDcPzhS7uyEkDxdUjg9g08BtNn
+current_kernel_command_lines=["snapd_recovery_mode=run console=ttyS0 console=tty1 panic=-1 quiet splash"]
+EOF
+    sudo cp modeenv "$DESTDIR"/var/lib/snapd/
+    sudo cp "$CACHE"/pc-kernel.snap "$DESTDIR"/var/lib/snapd/snaps/pc-kernel_x1.snap
+    sudo cp "$CACHE"/pc.snap "$DESTDIR"/var/lib/snapd/snaps/pc_x1.snap
 }
 
 populate_image() {
