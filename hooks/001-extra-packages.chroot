@@ -1,0 +1,108 @@
+#!/bin/bash
+
+set -eux
+
+export DEBIAN_FRONTEND=noninteractive
+
+# TODO: work with foundation to not have PROPOSED=1 when building the
+#       bionic-base tarfiles. Right now we still get some packages from
+#       proposed presumably if they are part of the initial debootstrap.
+#
+# ensure we don't use proposed for new installs
+rm -f /etc/apt/sources.list.d/proposed.list
+
+
+# ensure we have /proc or systemd will fail
+mount -t proc proc /proc
+trap 'umount /proc' EXIT
+
+# systemd postinst needs this
+mkdir -p /var/log/journal
+
+# shellcheck disable=SC1091
+CODENAME=$(. /etc/os-release; echo "$UBUNTU_CODENAME")
+# enable the foundations ubuntu-image PPA
+echo "deb http://ppa.launchpadcontent.net/canonical-foundations/ubuntu-image/ubuntu $CODENAME main" > /etc/apt/sources.list.d/ubuntu-image.list
+
+cat >/etc/apt/trusted.gpg.d/canonical-foundations-ubuntu-image.asc <<EOF
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+
+xo0EUL4ncAEEAOZssKpJDMZKbmsf9lHwlKA0vN6yQ0sOIPc500waH3xTC0sVlqQc
+3pUxCIdhU+qK1mH2D51FGHDb504k0Lpb+LE56TWa/X3xrZqUQX0UD1fykEruR4W2
+CdkXXZvmNBNatE9GurR6p407X5TED+dlUK/hIKNCb5unTEilBb4WwArxABEBAAHN
+LExhdW5jaHBhZCBQUEEgZm9yIENhbm9uaWNhbCBGb3VuZGF0aW9ucyBUZWFtwrgE
+EwECACIFAlC+J3ACGwMGCwkIBwMCBhUIAgkKCwQWAgMBAh4BAheAAAoJENTAtmj9
+TJE5u/MD/2j2auOv62YUFwT7POylj7ihhZOarOSCEiQGita8II77j5AoK5O75uD+
+oQc5pdxVN2NGYD5R0PmDCPFN1Rb869YjtsPgLefEB+6Tc1GOR9hgnwuSU5lrwqdQ
+Ht/skh2wZSHtJgejt9kqIKMho1wtYz7ZTqMtN9GJK0VONbHP0Xu6
+=lWSn
+-----END PGP PUBLIC KEY BLOCK-----
+
+EOF
+
+# install some packages we need
+apt update
+apt dist-upgrade -y
+
+PACKAGES=(
+    apparmor
+    bash-completion
+    bzip2
+    ca-certificates
+    cloud-init
+    cryptsetup
+    dbus
+    dbus-user-session
+    distro-info-data
+    dmsetup
+    dosfstools
+    finalrd
+    iproute2
+    iptables
+    iputils-ping
+    kmod
+    less
+    libnss-extrausers
+    libpam-modules
+    libpam-systemd
+    netcat-openbsd
+    netplan.io
+    openssh-server
+    rfkill
+    snapd
+    squashfs-tools
+    sudo
+    systemd
+    systemd-sysv
+    systemd-timesyncd
+    tzdata
+    udev
+    vim-tiny
+    wpasupplicant
+)
+
+# Locally built packages
+PACKAGES+=(
+    console-conf
+    probert-common
+    probert-network
+    subiquitycore
+)
+
+case "$(dpkg --print-architecture)" in
+    riscv64)
+        ;;
+    *)
+        PACKAGES+=(gdbserver systemd-bootchart)
+        ;;
+esac
+
+case "$(dpkg --print-architecture)" in
+    amd64|i386)
+        PACKAGES+=(secureboot-db)
+        ;;
+esac
+
+apt install --no-install-recommends -y "${PACKAGES[@]}"
+
+apt autoremove -y

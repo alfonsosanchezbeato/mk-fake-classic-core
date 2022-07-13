@@ -54,6 +54,26 @@ boot.img5 : start=     4030464, size=     8423391, type=0FC63DAF-8483-4772-8E79-
 EOF
 }
 
+install_data_partition() {
+    local DESTDIR=$1
+    local CACHE=$2
+
+    set -x
+    sudo cp -a hooks/ "$DESTDIR"/
+    # Copy base filesystem
+    sudo tar -C "$DESTDIR" -xf "$CACHE"/ubuntu-base-22.04-base-amd64.tar.gz
+    # Create basic devices to be able to install packages
+    [ -e "$DESTDIR"/dev/null ] || sudo mknod -m 666 "$DESTDIR"/dev/null c 1 3
+    [ -e "$DESTDIR"/dev/zero ] || sudo mknod -m 666 "$DESTDIR"/dev/zero c 1 5
+    [ -e "$DESTDIR"/dev/random ] || sudo mknod -m 666 "$DESTDIR"/dev/random c 1 8
+    [ -e "$DESTDIR"/dev/urandom ] || sudo mknod -m 666 "$DESTDIR"/dev/urandom c 1 9
+    # ensure resolving works inside the chroot
+    sudo cp /etc/resolv.conf "$DESTDIR"/etc/resolv.conf
+    # Just this script for the moment
+    sudo chroot "$DESTDIR" hooks/001-extra-packages.chroot
+    sudo rm -rf "$DESTDIR"/hooks/
+}
+
 populate_image() {
     IMG="$(readlink -f "$1")"
     CACHE="$(readlink -f "$2")"
@@ -81,7 +101,7 @@ populate_image() {
     sudo mount /dev/mapper/"$loop_data" "$MNT"/ubuntu-data
     
     # install things into the image
-    (cd "$MNT"/ubuntu-data && sudo tar xf "$CACHE"/ubuntu-base-22.04-base-amd64.tar.gz)
+    install_data_partition "$MNT"/ubuntu-data/ "$CACHE"
 
     # ESP partition just chainloads into ubuntu-boot
     # XXX: do we want this given that we don't have recovery systems?
