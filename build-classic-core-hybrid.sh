@@ -57,6 +57,8 @@ EOF
 install_data_partition() {
     local DESTDIR=$1
     local CACHE=$2
+    local KERNEL_SNAP=pc-kernel_x1.snap
+    local GADGET_SNAP=pc_x1.snap
 
     # Copy base filesystem
     sudo tar -C "$DESTDIR" -xf "$CACHE"/ubuntu-base-22.04-base-amd64.tar.gz
@@ -78,22 +80,23 @@ install_data_partition() {
     cat > modeenv <<EOF
 mode=run
 base=core22_x1.snap
-gadget=pc_x1.snap
-current_kernels=pc-kernel_x1.snap
+gadget=$GADGET_SNAP
+current_kernels=$KERNEL_SNAP
 model=canonical/ubuntu-core-22-pc-amd64
 grade=dangerous
 model_sign_key_id=9tydnLa6MTJ-jaQTFUXEwHl1yRx7ZS4K5cyFDhYDcPzhS7uyEkDxdUjg9g08BtNn
 current_kernel_command_lines=["snapd_recovery_mode=run console=ttyS0 console=tty1 panic=-1 quiet splash"]
 EOF
     sudo cp modeenv "$DESTDIR"/var/lib/snapd/
-    sudo cp "$CACHE"/pc-kernel.snap "$DESTDIR"/var/lib/snapd/snaps/pc-kernel_x1.snap
-    sudo cp "$CACHE"/pc.snap "$DESTDIR"/var/lib/snapd/snaps/pc_x1.snap
+    sudo cp "$CACHE"/pc-kernel.snap "$DESTDIR"/var/lib/snapd/snaps/"$KERNEL_SNAP"
+    sudo cp "$CACHE"/pc.snap "$DESTDIR"/var/lib/snapd/snaps/"$GADGET_SNAP"
 }
 
 populate_image() {
     IMG="$(readlink -f "$1")"
     CACHE="$(readlink -f "$2")"
     MNT="$(readlink -f "$3")"
+    local KERNEL_SNAP=pc-kernel_x1.snap
 
     mkdir -p "$MNT"
     sudo kpartx -av "$IMG"
