@@ -76,6 +76,9 @@ install_data_partition() {
     sudo chroot "$DESTDIR" hooks/001-extra-packages.chroot
     sudo rm -rf "$DESTDIR"/hooks/
 
+    # XXX set password for root user
+    sudo chroot "$DESTDIR" sh -c 'echo root:root | chpasswd'
+
     # Populate snapd data
     cat > modeenv <<EOF
 mode=run
