@@ -65,7 +65,7 @@ PACKAGES=(
     libpam-modules
     libpam-systemd
     netcat-openbsd
-    netplan.io
+    network-manager
     openssh-server
     rfkill
     snapd
