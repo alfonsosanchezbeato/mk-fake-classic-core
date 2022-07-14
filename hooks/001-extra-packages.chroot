@@ -49,7 +49,6 @@ PACKAGES=(
     bash-completion
     bzip2
     ca-certificates
-    cloud-init
     cryptsetup
     dbus
     dbus-user-session
@@ -78,15 +77,6 @@ PACKAGES=(
     tzdata
     udev
     vim-tiny
-    wpasupplicant
-)
-
-# Locally built packages
-PACKAGES+=(
-    console-conf
-    probert-common
-    probert-network
-    subiquitycore
 )
 
 case "$(dpkg --print-architecture)" in
