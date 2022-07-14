@@ -5,6 +5,15 @@ replace_snapd_binaries() {
     if [ ! -d initrd ]; then
         objcopy -O binary -j .initrd "$KERNEL_EFI_ORIG" initrd.img
         unmkinitramfs initrd.img initrd
+        SYSTEMD_D=initrd/main/usr/lib/systemd/system
+
+        # We mount nothing in /sysroot/writable
+        rm "$SYSTEMD_D"/sysroot-writable.mount \
+           "$SYSTEMD_D"/initrd-fs.target.wants/sysroot-writable.mount
+        # Some changes are needed: mount data part in /sysroot instead of base,
+        # do not call handle-writable-paths or the-modeenv.
+        cp replace-files/sysroot.mount "$SYSTEMD_D"/
+        cp replace-files/populate-writable.service "$SYSTEMD_D"/
     fi
 
     uc_initramfs_deb=ubuntu-core-initramfs_55_amd64.deb
@@ -52,7 +61,9 @@ main() {
     loop_boot="${loop}"p3
     sudo mount /dev/mapper/"$loop_boot" "$MNT"/ubuntu-boot
 
-    cp -a kernel.efi "$MNT"/ubuntu-boot/EFI/ubuntu/
+    # XXX
+    subpath=$(readlink "$MNT"/ubuntu-boot/EFI/ubuntu/kernel.efi)
+    cp -a kernel.efi "$MNT"/ubuntu-boot/EFI/ubuntu/"$subpath"
 }
 
 main
