@@ -7,13 +7,20 @@ replace_snapd_binaries() {
         unmkinitramfs initrd.img initrd
         SYSTEMD_D=initrd/main/usr/lib/systemd/system
 
-        # We mount nothing in /sysroot/writable
+        # Mounts in /sysroot/ created by snap-bootstrap now
         rm "$SYSTEMD_D"/sysroot-writable.mount \
            "$SYSTEMD_D"/initrd-fs.target.wants/sysroot-writable.mount
-        # Some changes are needed: mount data part in /sysroot instead of base,
+        rm "$SYSTEMD_D"/sysroot.mount \
+           "$SYSTEMD_D"/initrd-root-fs.target.wants/sysroot.mount
         # do not call handle-writable-paths or the-modeenv.
-        cp replace-files/sysroot.mount "$SYSTEMD_D"/
-        cp replace-files/populate-writable.service "$SYSTEMD_D"/
+        # Change in the service would be:
+        # [Install]
+        # WantedBy=initrd-root-device.target
+        # WantedBy=basic.target
+        # and then we would enable from snap-bootstrap in the UC case
+        rm "$SYSTEMD_D"/initrd-root-device.target.wants/populate-writable.service \
+           "$SYSTEMD_D"/basic.target.wants/populate-writable.service
+
     fi
 
     uc_initramfs_deb=ubuntu-core-initramfs_55_amd64.deb
@@ -26,12 +33,12 @@ replace_snapd_binaries() {
     BINPATH=~/go/src/github.com/snapcore/snapd
     cp "$BINPATH"/snap-bootstrap initrd/main/usr/lib/snapd/
     cd initrd/main
-    find . | cpio --create --quiet --format=newc --owner=0:0 | lz4 -l -7 > ../../initrd.img
+    find . | cpio --create --quiet --format=newc --owner=0:0 | lz4 -l -7 > ../../initrd.img.new
     cd -
 
     objcopy -O binary -j .linux "$KERNEL_EFI_ORIG" linux
     objcopy --add-section .linux=linux --change-section-vma .linux=0x2000000 \
-            --add-section .initrd=initrd.img --change-section-vma .initrd=0x3000000 \
+            --add-section .initrd=initrd.img.new --change-section-vma .initrd=0x3000000 \
             usr/lib/ubuntu-core-initramfs/efi/linuxx64.efi.stub \
             kernel.efi
 }
