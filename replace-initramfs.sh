@@ -13,13 +13,15 @@ replace_snapd_binaries() {
         rm "$SYSTEMD_D"/sysroot.mount \
            "$SYSTEMD_D"/initrd-root-fs.target.wants/sysroot.mount
         # do not call handle-writable-paths or the-modeenv.
-        # Change in the service would be:
+        # Change in the service is:
         # [Install]
         # WantedBy=initrd-root-device.target
         # WantedBy=basic.target
         # and then we would enable from snap-bootstrap in the UC case
         rm "$SYSTEMD_D"/initrd-root-device.target.wants/populate-writable.service \
            "$SYSTEMD_D"/basic.target.wants/populate-writable.service
+        #cp replace-files/* "$SYSTEMD_D"/
+        cp replace-files/populate-writable.service "$SYSTEMD_D"/
 
     fi
 
