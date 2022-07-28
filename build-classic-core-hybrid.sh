@@ -16,7 +16,10 @@ get_assets() {
         snap download --channel=22 --basename="${snap}" --target-directory="$CACHE" "${snap}"
         unsquashfs -n -d "$CACHE"/snap-"$snap" "$CACHE"/"$snap".snap
     done
-    
+    for snap in snapd core22; do
+        snap download --basename="${snap}" --target-directory="$CACHE" "${snap}"
+    done
+
     # get the ubuntu classic base
     (cd "$CACHE" && wget -c http://cdimage.ubuntu.com/ubuntu-base/releases/22.04/release/ubuntu-base-22.04-base-amd64.tar.gz)
 }
@@ -59,6 +62,8 @@ install_data_partition() {
     local CACHE=$2
     local KERNEL_SNAP=pc-kernel_x1.snap
     local GADGET_SNAP=pc_x1.snap
+    # just some random date for the seed label
+    local SEED_LABEL=20220617
 
     # Copy base filesystem
     sudo tar -C "$DESTDIR" -xf "$CACHE"/ubuntu-base-22.04-base-amd64.tar.gz
@@ -70,18 +75,41 @@ install_data_partition() {
     [ -e "$DESTDIR"/dev/random ] || sudo mknod -m 666 "$DESTDIR"/dev/random c 1 8
     [ -e "$DESTDIR"/dev/urandom ] || sudo mknod -m 666 "$DESTDIR"/dev/urandom c 1 9
     # ensure resolving works inside the chroot
-    sudo cp /etc/resolv.conf "$DESTDIR"/etc/resolv.conf
-    sudo cp -a hooks/ "$DESTDIR"/
-    # Just this script for the moment
-    sudo chroot "$DESTDIR" hooks/001-extra-packages.chroot
-    sudo rm -rf "$DESTDIR"/hooks/
+    echo "nameserver 8.8.8.8" | sudo tee -a "$DESTDIR"/etc/resolv.conf
+    # install additional packages
+    set -x
+    sudo chroot "$DESTDIR" sh -c "DEBIAN_FRONTEND=noninteractive apt update"
+    #sudo chroot "$DESTDIR" sh -c "DEBIAN_FRONTEND=noninteractive apt dist-upgrade -y"
+    local pkgs="snapd ssh openssh-server sudo iproute2 iputils-ping isc-dhcp-client netplan.io vim-tiny"
+    sudo chroot "$DESTDIR" sh -c \
+         "DEBIAN_FRONTEND=noninteractive apt install --no-install-recommends -y $pkgs"
+    # netplan config
+    cat > "$CACHE"/00-ethernet.yaml <<'EOF'
+network:
+  ethernets:
+    any:
+      match:
+        name: e*
+      dhcp4: true
+  version: 2
+EOF
+    sudo cp "$CACHE"/00-ethernet.yaml "$DESTDIR"/etc/netplan
+
+    # ensure we can login
+    sudo chroot "$DESTDIR" useradd -m user1
+    echo -e "ubuntu\nubuntu" | sudo chroot "$DESTDIR" passwd user1
+    echo "user1 ALL=(ALL) NOPASSWD:ALL" | sudo tee -a "$DESTDIR"/etc/sudoers
 
     # XXX set password for root user
     sudo chroot "$DESTDIR" sh -c 'echo root:root | chpasswd'
+    sudo sh -c "echo \"PermitRootLogin yes\nPasswordAuthentication yes\" >> $DESTDIR/etc/ssh/sshd_config"
 
     # Populate snapd data
     cat > modeenv <<EOF
 mode=run
+recovery_system=$SEED_LABEL
+current_recovery_systems=$SEED_LABEL
+good_recovery_systems=$SEED_LABEL
 base=core22_x1.snap
 gadget=$GADGET_SNAP
 current_kernels=$KERNEL_SNAP
@@ -91,8 +119,33 @@ model_sign_key_id=9tydnLa6MTJ-jaQTFUXEwHl1yRx7ZS4K5cyFDhYDcPzhS7uyEkDxdUjg9g08Bt
 current_kernel_command_lines=["snapd_recovery_mode=run console=ttyS0 console=tty1 panic=-1 quiet splash"]
 EOF
     sudo cp modeenv "$DESTDIR"/var/lib/snapd/
+    sudo mkdir -p "$DESTDIR"/var/lib/snapd/snaps/
     sudo cp "$CACHE"/pc-kernel.snap "$DESTDIR"/var/lib/snapd/snaps/"$KERNEL_SNAP"
     sudo cp "$CACHE"/pc.snap "$DESTDIR"/var/lib/snapd/snaps/"$GADGET_SNAP"
+    # populate seed
+    local recsys_d="$DESTDIR"/var/lib/snapd/seed/systems/"$SEED_LABEL"
+    sudo mkdir -p "$recsys_d"/snaps "$recsys_d"/assertions
+    sudo cp "$CACHE"/{pc,pc-kernel,snapd,core22}.snap "$recsys_d"/snaps
+    sudo cp classic-model.assert "$recsys_d"/model
+    {
+        for assert in "$CACHE"/*.assert; do
+            cat "$assert"
+            printf "\n"
+        done
+    } > "$CACHE"/snap-asserts
+    sudo cp "$CACHE"/snap-asserts "$recsys_d"/assertions/snaps
+    sudo cp model-etc "$recsys_d"/assertions/
+    cat > "$CACHE"/options.yaml <<EOF
+snaps:
+- name: snapd
+  id: PMrrV4ml8uWuEUDBT8dSGnKUYbevVhc4
+  unasserted: snapd.snap
+- name: pc-kernel
+  unasserted: pc-kernel.snap
+- name: pc
+  unasserted: pc.snap
+EOF
+    sudo cp "$CACHE"/options.yaml "$recsys_d"
 }
 
 populate_image() {
