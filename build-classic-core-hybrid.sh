@@ -13,11 +13,11 @@ get_assets() {
     mkdir -p "$CACHE"
     # get the snaps
     for snap in pc-kernel pc; do
-        snap download --channel=22 --basename="${snap}" --target-directory="$CACHE" "${snap}"
-        unsquashfs -n -d "$CACHE"/snap-"$snap" "$CACHE"/"$snap".snap
+        snap download --channel=22 --target-directory="$CACHE" "$snap"
+        unsquashfs -n -d "$CACHE"/snap-"$snap" "$CACHE"/"$snap"_*.snap
     done
     for snap in snapd core22; do
-        snap download --basename="${snap}" --target-directory="$CACHE" "${snap}"
+        snap download --target-directory="$CACHE" "$snap"
     done
 
     # get the ubuntu classic base
@@ -60,10 +60,15 @@ EOF
 install_data_partition() {
     local DESTDIR=$1
     local CACHE=$2
-    local KERNEL_SNAP=pc-kernel_x1.snap
-    local GADGET_SNAP=pc_x1.snap
+    local KERNEL_SNAP GADGET_SNAP BASE_SNAP SNAPD_SNAP
     # just some random date for the seed label
     local SEED_LABEL=20220617
+
+    set -x
+    KERNEL_SNAP=$(find "$CACHE" -maxdepth 1 -name 'pc-kernel_*.snap' -printf "%f\n")
+    GADGET_SNAP=$(find "$CACHE" -maxdepth 1 -name 'pc_*.snap' -printf "%f\n")
+    BASE_SNAP=$(find "$CACHE" -maxdepth 1 -name 'core22_*.snap' -printf "%f\n")
+    SNAPD_SNAP=$(find "$CACHE" -maxdepth 1 -name 'snapd_*.snap' -printf "%f\n")
 
     # Copy base filesystem
     sudo tar -C "$DESTDIR" -xf "$CACHE"/ubuntu-base-22.04-base-amd64.tar.gz
@@ -77,7 +82,6 @@ install_data_partition() {
     # ensure resolving works inside the chroot
     echo "nameserver 8.8.8.8" | sudo tee -a "$DESTDIR"/etc/resolv.conf
     # install additional packages
-    set -x
     sudo chroot "$DESTDIR" sh -c "DEBIAN_FRONTEND=noninteractive apt update"
     #sudo chroot "$DESTDIR" sh -c "DEBIAN_FRONTEND=noninteractive apt dist-upgrade -y"
     local pkgs="snapd ssh openssh-server sudo iproute2 iputils-ping isc-dhcp-client netplan.io vim-tiny"
@@ -110,7 +114,7 @@ mode=run
 recovery_system=$SEED_LABEL
 current_recovery_systems=$SEED_LABEL
 good_recovery_systems=$SEED_LABEL
-base=core22_x1.snap
+base=$BASE_SNAP
 gadget=$GADGET_SNAP
 current_kernels=$KERNEL_SNAP
 model=canonical/ubuntu-core-22-pc-amd64
@@ -119,13 +123,19 @@ model_sign_key_id=9tydnLa6MTJ-jaQTFUXEwHl1yRx7ZS4K5cyFDhYDcPzhS7uyEkDxdUjg9g08Bt
 current_kernel_command_lines=["snapd_recovery_mode=run console=ttyS0 console=tty1 panic=-1 quiet splash"]
 EOF
     sudo cp modeenv "$DESTDIR"/var/lib/snapd/
+    # needed from the beginning in ubuntu-data as these are mounted by snap-bootstrap
     sudo mkdir -p "$DESTDIR"/var/lib/snapd/snaps/
-    sudo cp "$CACHE"/pc-kernel.snap "$DESTDIR"/var/lib/snapd/snaps/"$KERNEL_SNAP"
-    sudo cp "$CACHE"/pc.snap "$DESTDIR"/var/lib/snapd/snaps/"$GADGET_SNAP"
+    sudo cp "$CACHE/$KERNEL_SNAP" "$CACHE/$GADGET_SNAP" \
+         "$DESTDIR"/var/lib/snapd/snaps/
     # populate seed
+    local seed_snaps_d="$DESTDIR"/var/lib/snapd/seed/snaps
     local recsys_d="$DESTDIR"/var/lib/snapd/seed/systems/"$SEED_LABEL"
-    sudo mkdir -p "$recsys_d"/snaps "$recsys_d"/assertions
-    sudo cp "$CACHE"/{pc,pc-kernel,snapd,core22}.snap "$recsys_d"/snaps
+    sudo mkdir -p "$recsys_d"/snaps "$recsys_d"/assertions "$seed_snaps_d"
+    if [ -n "$UNASSERTED" ]; then
+        sudo cp "$CACHE"/{pc,pc-kernel,snapd,core22}_*.snap "$recsys_d"/snaps
+    else
+        sudo cp "$CACHE"/{pc,pc-kernel,snapd,core22}_*.snap "$seed_snaps_d"
+    fi
     sudo cp classic-model.assert "$recsys_d"/model
     {
         for assert in "$CACHE"/*.assert; do
@@ -135,24 +145,31 @@ EOF
     } > "$CACHE"/snap-asserts
     sudo cp "$CACHE"/snap-asserts "$recsys_d"/assertions/snaps
     sudo cp model-etc "$recsys_d"/assertions/
-    cat > "$CACHE"/options.yaml <<EOF
+
+    # not needed if we have asserted snaps
+    if [ -n "$UNASSERTED" ]; then
+        cat > "$CACHE"/options.yaml <<EOF
 snaps:
 - name: snapd
   id: PMrrV4ml8uWuEUDBT8dSGnKUYbevVhc4
-  unasserted: snapd.snap
+  unasserted: $SNAPD_SNAP
 - name: pc-kernel
-  unasserted: pc-kernel.snap
+  unasserted: $KERNEL_SNAP
 - name: pc
-  unasserted: pc.snap
+  unasserted: $GADGET_SNAP
+- name: core22
+  unasserted: $BASE_SNAP
 EOF
-    sudo cp "$CACHE"/options.yaml "$recsys_d"
+        sudo cp "$CACHE"/options.yaml "$recsys_d"
+    fi
 }
 
 populate_image() {
     IMG="$(readlink -f "$1")"
     CACHE="$(readlink -f "$2")"
     MNT="$(readlink -f "$3")"
-    local KERNEL_SNAP=pc-kernel_x1.snap
+    local KERNEL_SNAP
+    KERNEL_SNAP=$(find "$CACHE" -maxdepth 1 -name 'pc-kernel_*.snap' -printf "%f\n")
 
     mkdir -p "$MNT"
     sudo kpartx -av "$IMG"
