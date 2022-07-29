@@ -96,9 +96,9 @@ EOF
     sudo cp "$CACHE"/00-ethernet.yaml "$DESTDIR"/etc/netplan
 
     # ensure we can login
-    sudo chroot "$DESTDIR" useradd -m user1
-    echo -e "ubuntu\nubuntu" | sudo chroot "$DESTDIR" passwd user1
-    echo "user1 ALL=(ALL) NOPASSWD:ALL" | sudo tee -a "$DESTDIR"/etc/sudoers
+    sudo chroot "$DESTDIR" adduser --disabled-password --gecos "" ubuntu
+    echo -e "ubuntu\nubuntu" | sudo chroot "$DESTDIR" passwd ubuntu
+    echo "ubuntu ALL=(ALL) NOPASSWD:ALL" | sudo tee -a "$DESTDIR"/etc/sudoers
 
     # XXX set password for root user
     sudo chroot "$DESTDIR" sh -c 'echo root:root | chpasswd'
