@@ -9,8 +9,10 @@ After=sysroot.mount
 After=sysroot-writable.mount
 Requires=sysroot.mount
 Requires=sysroot-writable.mount
-#Wants=snap-initramfs-mounts.service
-#After=snap-initramfs-mounts.service
+Wants=snap-initramfs-mounts.service
+After=snap-initramfs-mounts.service
+
+ConditionPathIsMountPoint=/run/mnt/base
 
 [Service]
 Type=oneshot
@@ -22,7 +24,3 @@ ExecStart=/usr/bin/touch /sysroot/run/fstab
 ExecStart=/usr/bin/chroot /sysroot /usr/lib/core/handle-writable-paths / /etc/system-image/writable-paths /run/fstab
 # TODO:UC20: move the-modeenv implementation to snap-bootstrap too
 ExecStart=/usr/lib/the-modeenv
-
-[Install]
-WantedBy=initrd-root-device.target
-WantedBy=basic.target

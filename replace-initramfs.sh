@@ -7,22 +7,8 @@ replace_snapd_binaries() {
         unmkinitramfs initrd.img initrd
         SYSTEMD_D=initrd/main/usr/lib/systemd/system
 
-        # Mounts in /sysroot/ created by snap-bootstrap now
-        rm "$SYSTEMD_D"/sysroot-writable.mount \
-           "$SYSTEMD_D"/initrd-fs.target.wants/sysroot-writable.mount
-        rm "$SYSTEMD_D"/sysroot.mount \
-           "$SYSTEMD_D"/initrd-root-fs.target.wants/sysroot.mount
-        # do not call handle-writable-paths or the-modeenv.
-        # Change in the service is:
-        # [Install]
-        # WantedBy=initrd-root-device.target
-        # WantedBy=basic.target
-        # and then we would enable from snap-bootstrap in the UC case
-        rm "$SYSTEMD_D"/initrd-root-device.target.wants/populate-writable.service \
-           "$SYSTEMD_D"/basic.target.wants/populate-writable.service
-        #cp replace-files/* "$SYSTEMD_D"/
-        cp replace-files/populate-writable.service "$SYSTEMD_D"/
-
+        # Copy files from https://github.com/snapcore/core-initrd/pull/106
+        cp replace-files/* "$SYSTEMD_D"/
     fi
 
     uc_initramfs_deb=ubuntu-core-initramfs_55_amd64.deb
