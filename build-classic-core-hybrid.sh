@@ -124,6 +124,7 @@ current_kernel_command_lines=["snapd_recovery_mode=run console=ttyS0 console=tty
 EOF
     sudo cp modeenv "$DESTDIR"/var/lib/snapd/
     # needed from the beginning in ubuntu-data as these are mounted by snap-bootstrap
+    # (UC also has base here, but we do not mount it from initramfs in clasic)
     sudo mkdir -p "$DESTDIR"/var/lib/snapd/snaps/
     sudo cp "$CACHE/$KERNEL_SNAP" "$CACHE/$GADGET_SNAP" \
          "$DESTDIR"/var/lib/snapd/snaps/
