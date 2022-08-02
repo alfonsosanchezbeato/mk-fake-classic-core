@@ -4,12 +4,12 @@ set -e
 
 get_assets() {
     CACHE="$1"
-    
+
     if [ -d "$CACHE" ]; then
         echo "Using exiting cache dir $CACHE"
         return
     fi
-    
+
     mkdir -p "$CACHE"
     # get the snaps
     for snap in pc-kernel pc; do
@@ -73,7 +73,6 @@ install_data_partition() {
     # Copy base filesystem
     sudo tar -C "$DESTDIR" -xf "$CACHE"/ubuntu-base-22.04-base-amd64.tar.gz
 
-    # Run hooks
     # Create basic devices to be able to install packages
     [ -e "$DESTDIR"/dev/null ] || sudo mknod -m 666 "$DESTDIR"/dev/null c 1 3
     [ -e "$DESTDIR"/dev/zero ] || sudo mknod -m 666 "$DESTDIR"/dev/zero c 1 5
@@ -82,10 +81,9 @@ install_data_partition() {
     # ensure resolving works inside the chroot
     echo "nameserver 8.8.8.8" | sudo tee -a "$DESTDIR"/etc/resolv.conf
     # install additional packages
-    sudo chroot "$DESTDIR" sh -c "DEBIAN_FRONTEND=noninteractive apt update"
-    #sudo chroot "$DESTDIR" sh -c "DEBIAN_FRONTEND=noninteractive apt dist-upgrade -y"
-    local pkgs="snapd ssh openssh-server sudo iproute2 iputils-ping isc-dhcp-client netplan.io vim-tiny"
-    sudo chroot "$DESTDIR" sh -c \
+    sudo chroot "$DESTDIR" /usr/bin/sh -c "DEBIAN_FRONTEND=noninteractive apt update"
+    local pkgs="snapd ssh openssh-server sudo iproute2 iputils-ping isc-dhcp-client netplan.io vim-tiny kmod"
+    sudo chroot "$DESTDIR" /usr/bin/sh -c \
          "DEBIAN_FRONTEND=noninteractive apt install --no-install-recommends -y $pkgs"
     # netplan config
     cat > "$CACHE"/00-ethernet.yaml <<'EOF'
@@ -99,14 +97,23 @@ network:
 EOF
     sudo cp "$CACHE"/00-ethernet.yaml "$DESTDIR"/etc/netplan
 
+    # mount bits needed to be able to update boot assets
+    sudo mkdir -p "$DESTDIR"/boot/grub "$DESTDIR"/boot/efi
+    sudo tee "$DESTDIR"/etc/fstab <<'EOF'
+/run/mnt/ubuntu-boot/EFI/ubuntu /boot/grub none bind 0 0
+EOF
+
     # ensure we can login
-    sudo chroot "$DESTDIR" adduser --disabled-password --gecos "" ubuntu
-    echo -e "ubuntu\nubuntu" | sudo chroot "$DESTDIR" passwd ubuntu
+    sudo chroot "$DESTDIR" /usr/sbin/adduser --disabled-password --gecos "" ubuntu
+    echo -e "ubuntu\nubuntu" | sudo chroot "$DESTDIR" /usr/bin/passwd ubuntu
     echo "ubuntu ALL=(ALL) NOPASSWD:ALL" | sudo tee -a "$DESTDIR"/etc/sudoers
 
     # XXX set password for root user
-    sudo chroot "$DESTDIR" sh -c 'echo root:root | chpasswd'
-    sudo sh -c "echo \"PermitRootLogin yes\nPasswordAuthentication yes\" >> $DESTDIR/etc/ssh/sshd_config"
+    sudo chroot "$DESTDIR" /usr/bin/sh -c 'echo root:root | chpasswd'
+    sudo tee -a "$DESTDIR/etc/ssh/sshd_config" <<'EOF'
+PermitRootLogin yes
+PasswordAuthentication yes
+EOF
 
     # Populate snapd data
     cat > modeenv <<EOF
@@ -174,25 +181,25 @@ populate_image() {
 
     mkdir -p "$MNT"
     sudo kpartx -av "$IMG"
-    
-    loop=$(sudo kpartx -l "$IMG" |tr -d " " | cut -f1 -d:|sed 's/..$//'|head -1)
+
+    loop=$(sudo losetup -P --show -f "${IMG}")
     loop_esp="${loop}"p2
     loop_boot="${loop}"p3
     loop_save="${loop}"p4
     loop_data="${loop}"p5
     # XXX: on a real UC device this the ESP is "ubuntu-seed"
-    sudo mkfs.vfat /dev/mapper/"$loop_esp"
+    sudo mkfs.fat /dev/mapper/"$loop_esp"
     sudo mkfs.ext4 -L ubuntu-boot -q /dev/mapper/"$loop_boot"
     sudo mkfs.ext4 -L ubuntu-save -q /dev/mapper/"$loop_save"
     sudo mkfs.ext4 -L ubuntu-data -q /dev/mapper/"$loop_data"
-    for name in esp ubuntu-boot ubuntu-save ubuntu-data; do 
+    for name in esp ubuntu-boot ubuntu-save ubuntu-data; do
         mkdir -p "$MNT"/"$name"
     done
     sudo mount /dev/mapper/"$loop_esp" "$MNT"/esp
     sudo mount /dev/mapper/"$loop_boot" "$MNT"/ubuntu-boot
     sudo mount /dev/mapper/"$loop_save" "$MNT"/ubuntu-save
     sudo mount /dev/mapper/"$loop_data" "$MNT"/ubuntu-data
-    
+
     # install things into the image
     install_data_partition "$MNT"/ubuntu-data/ "$CACHE"
 
@@ -212,7 +219,7 @@ menuentry "Continue to run mode" --hotkey=n --id=run {
 EOF
     sudo mkdir -p "$MNT"/esp/EFI/ubuntu
     sudo cp "$CACHE"/esp-grub.cfg "$MNT"/esp/EFI/ubuntu/grub.cfg
-    
+
     # ubuntu-boot
     sudo mkdir -p "$MNT"/ubuntu-boot/EFI/boot
     sudo cp -a "$CACHE"/snap-pc/grubx64.efi "$MNT"/ubuntu-boot/EFI/boot
@@ -220,7 +227,7 @@ EOF
 
     sudo mkdir -p "$MNT"/ubuntu-boot/EFI/ubuntu
     cat > "$CACHE"/grub.cfg <<'EOF'
-set default=0   
+set default=0
 set timeout=3
 
 # load only kernel_status and kernel command line variables set by snapd from
@@ -273,52 +280,13 @@ EOF
 #######################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################"
     printf "%s" "$GRUBENV" > "$CACHE"/grubenv
     sudo cp -a "$CACHE"/grubenv "$MNT"/ubuntu-boot/EFI/ubuntu/grubenv
-    cat > "$CACHE"/model <<EOF
-type: model
-authority-id: tcMZ22pMaY5EVwoLozfjM4fR31bko4yj
-series: 16
-brand-id: tcMZ22pMaY5EVwoLozfjM4fR31bko4yj
-model: ubuntu-core-22-pc-amd64
-architecture: amd64
-base: core22
-classic: true
-distribution: ubuntu
-grade: dangerous
-snaps:
-  -
-    default-channel: 22/edge
-    name: pc
-    type: gadget
-  -
-    default-channel: 22/edge
-    name: pc-kernel
-    type: kernel
-  -
-    default-channel: latest/edge
-    id: amcUKQILKXHHTlmSa7NMdnXSx02dNeeT
-    name: core22
-    type: base
-  -
-    default-channel: latest/edge
-    id: PMrrV4ml8uWuEUDBT8dSGnKUYbevVhc4
-    name: snapd
-    type: snapd
-timestamp: 2022-03-31T12:00:00.0Z
-sign-key-sha3-384: JGh2mJNy5UeNKQ05MNvphnlDcgteasy0WiJFgk-aJ9XvPyqcKwIm8zomJtWwb-mT
-
-AcLBcwQAAQoAHRYhBAho4l7L210CwlP5EEjPuvv/MykzBQJi0Y/TAAoJEEjPuvv/MykzFLsP/3YO
-sTN4B6q0PWe8SNb1qPMidKryoZ86dO6GmI4RVnRzN678J6j09bBqgYB9N61BtYGYCUHYlVsZAsVh
-W1BQNzd0PVZHPSz3eI/yzBna8buRtBLO/vfAVIaLrtMGy9YGlL8uRPF+LqUbvwm+0MUoy4FOsVCw
-kBR6A4jl++AiSJPucVncqs62CskB2RbIBWnk1jUlBeT11CRZB7jjjxlc7dPjJwvtcwpIGj3VMaz8
-azqxSBvOnfOBLe/eBeGxZwbmMA5t/p41aOP5eCVlDFDhagvUveAG6cUeAmXIhR6QM639UJQR75Qq
-6/ITVUvbFtFGJBpV06701xfDCDgO4/OTeYSimgJ+dXzQnn+rAmhRI6HmPkDyNnKScMN1O+Ak5GZt
-u6uueWKQyRtXz2WL2Z5/xmfoPWRPOON8jhzs5HQ7+zW5I7pf3Ri1K6gfnymrcOG9ArluWjZrYBTh
-MdkpgY7cvxVvWDPiVBD9zdMVx4QaT0FxivYRoFDJ3N+yAM3MTBZkD6cvQavfHsIaCdYfTZYiHrrK
-D+XtyoRDl0kQtww139XsM+FST+eMHrrguX5EdaNUw6p1uSjO3zJCtjENH5pTf3R/MUafN9LT48kl
-qfhX1/GA71seKspQoAz1yPfyfn0wJUqzQelgVEMDLaV82Fp54qZmSQ3zS6txaaMdkKyDEFRE
-EOF
+    local assert_p=classic-model.assert
+    if [ ! -f "$assert_p" ]; then
+        printf "%s not found, please sign an assertion using classic-model.json as model\n" \
+               "$assert_p"
+    fi
     sudo mkdir -p "$MNT"/ubuntu-boot/device/
-    sudo cp -a "$CACHE"/model "$MNT"/ubuntu-boot/device/
+    sudo cp -a "$assert_p" "$MNT"/ubuntu-boot/device/
 
     # kernel
     sudo mkdir -p "$MNT"/ubuntu-boot/EFI/ubuntu/"$KERNEL_SNAP"
@@ -346,7 +314,7 @@ show_how_to_run_qemu() {
 }
 
 main() {
-    trap "cleanup ./boot.img ./mnt" EXIT INT 
+    trap "cleanup ./boot.img ./mnt" EXIT INT
 
     get_assets ./cache
     create_image ./boot.img
@@ -357,4 +325,3 @@ main() {
 }
 
 main
-
