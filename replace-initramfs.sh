@@ -68,7 +68,7 @@ main() {
     sudo sed 's/#Nice=-5/Environment=SNAPD_DEBUG=1/' \
          "$MNT"/data/usr/lib/systemd/system/snapd.service
     # XXX service file seems to be restored, use brute force for the moment
-    sudo printf 'SNAPD_DEBUG=1\n' >> "$MNT"/data/etc/environment
+    printf 'SNAPD_DEBUG=1\n' | sudo tee -a "$MNT"/data/etc/environment
 }
 
 main
