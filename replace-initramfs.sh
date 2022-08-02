@@ -36,6 +36,7 @@ cleanup() {
     IMG="$(readlink -f "$1")"
     MNT="$(readlink -f "$2")"
 
+    sync
     sleep 1
     sudo umount "$MNT"/* || true
     sleep 1
@@ -66,6 +67,8 @@ main() {
     sudo cp "$BINPATH"/snapd "$MNT"/data/usr/lib/snapd/
     sudo sed 's/#Nice=-5/Environment=SNAPD_DEBUG=1/' \
          "$MNT"/data/usr/lib/systemd/system/snapd.service
+    # XXX service file seems to be restored, use brute force for the moment
+    sudo printf 'SNAPD_DEBUG=1\n' >> "$MNT"/data/etc/environment
 }
 
 main
