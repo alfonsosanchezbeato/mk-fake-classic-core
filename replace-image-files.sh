@@ -53,8 +53,8 @@ main() {
     # shellcheck disable=SC2064
     trap "cleanup ./$IMG ./$MNT" EXIT
 
-    sudo kpartx -av "$IMG"
-    loop=$(sudo kpartx -l "$IMG" |tr -d " " | cut -f1 -d:|sed 's/..$//'|head -1)
+    loop=$(sudo kpartx -asv "$IMG" | head -n1 | cut -d' ' -f3)
+    loop=${loop%p*}
     loop_boot="$loop"p3
     sudo mount /dev/mapper/"$loop_boot" "$MNT"/ubuntu-boot
 
