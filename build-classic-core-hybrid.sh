@@ -20,6 +20,11 @@ get_assets() {
         snap download --target-directory="$CACHE" "$snap"
     done
 
+    # Change gadget.yaml
+    # cp gadget.yaml "$CACHE"/snap-pc/meta/
+    # pc_snap_path=$(find "$CACHE" -mindepth 1 -maxdepth 1 -name 'pc_*.snap')
+    # snap pack --filename="$pc_snap_path" "$CACHE"/snap-pc
+
     # get the ubuntu classic base
     (cd "$CACHE" && wget -c http://cdimage.ubuntu.com/ubuntu-base/releases/22.04/release/ubuntu-base-22.04-base-amd64.tar.gz)
 }
@@ -58,6 +63,7 @@ EOF
 }
 
 install_data_partition() {
+    set -x
     local DESTDIR=$1
     local CACHE=$2
     # just some random date for the seed label
@@ -70,9 +76,16 @@ install_data_partition() {
     SNAP_NAME[base]=core22
     SNAP_NAME[snapd]=snapd
     for i in "${snap_idx[@]}"; do
-        IS_UNASSERTED[$i]=false
-        SNAP_F[$i]=$(find "$CACHE" -maxdepth 1 -name "${SNAP_NAME[$i]}_*.snap" -printf "%f\n")
-        SNAP_P[$i]="$CACHE/${SNAP_F[$i]}"
+        snap_n=${SNAP_NAME[$i]}
+        if [ "${IN_SNAP_F[$snap_n]}" != "" ]; then
+            IS_UNASSERTED[$i]=true
+            SNAP_F[$i]=${IN_SNAP_F[$snap_n]}
+            SNAP_P[$i]=${IN_SNAP_P[$snap_n]}
+        else
+            IS_UNASSERTED[$i]=false
+            SNAP_F[$i]=$(find "$CACHE" -maxdepth 1 -name "${SNAP_NAME[$i]}_*.snap" -printf "%f\n")
+            SNAP_P[$i]="$CACHE/${SNAP_F[$i]}"
+        fi
     done
 
     # Copy base filesystem
@@ -90,6 +103,7 @@ install_data_partition() {
     local pkgs="snapd ssh openssh-server sudo iproute2 iputils-ping isc-dhcp-client netplan.io vim-tiny kmod cloud-init"
     sudo chroot "$DESTDIR" /usr/bin/sh -c \
          "DEBIAN_FRONTEND=noninteractive apt install --no-install-recommends -y $pkgs"
+    #sudo mkdir -p "$DESTDIR"/etc/netplan "$DESTDIR"/var/lib/snapd/snaps/ "$DESTDIR/etc/ssh/"
     # netplan config
     cat > "$CACHE"/00-ethernet.yaml <<'EOF'
 network:
@@ -147,9 +161,9 @@ EOF
 
     for i in "${snap_idx[@]}"; do
         if [ "${IS_UNASSERTED[$i]}" = true ]; then
-            sudo cp snaps/"${SNAP_NAME[$i]}"_*.snap "$recsys_d"/snaps
+            sudo cp "${SNAP_P[$i]}" "$recsys_d"/snaps
         else
-            sudo cp "$CACHE"/"${SNAP_NAME[$i]}"_*.snap "$seed_snaps_d"
+            sudo cp "${SNAP_P[$i]}" "$seed_snaps_d"
         fi
     done
     sudo cp classic-model.assert "$recsys_d"/model
@@ -162,21 +176,13 @@ EOF
     sudo cp "$CACHE"/snap-asserts "$recsys_d"/assertions/snaps
     sudo cp model-etc "$recsys_d"/assertions/
 
-    # not needed if we have asserted snaps
-    if [ -n "$UNASSERTED" ]; then
-        cat > "$CACHE"/options.yaml <<EOF
-snaps:
-- name: snapd
-  id: PMrrV4ml8uWuEUDBT8dSGnKUYbevVhc4
-  unasserted: $SNAPD_SNAP
-- name: pc-kernel
-  unasserted: $KERNEL_SNAP
-- name: pc
-  unasserted: $GADGET_SNAP
-- name: core22
-  unasserted: $BASE_SNAP
-EOF
-        sudo cp "$CACHE"/options.yaml "$recsys_d"
+    # write options file if we have some unasserted snap in the seed
+    if [ "${#IN_SNAP_F[@]}" -gt 0 ]; then
+        OPTIONS_DATA="snaps:\n"
+        for snap_n in "${!IN_SNAP_F[@]}"; do
+            OPTIONS_DATA="${OPTIONS_DATA}- name: $snap_n\n  unasserted: ${IN_SNAP_F[$snap_n]}\n"
+        done
+        sudo sh -c "printf %b \"$OPTIONS_DATA\" > \"$recsys_d\"/options.yaml"
     fi
 }
 
@@ -323,9 +329,6 @@ show_how_to_run_qemu() {
 }
 
 main() {
-    BOOT_IMG="${1:-./boot.img}"
-    CACHE_DIR="${2:-./cache}"
-    MNT_DIR="${3:-./mnt}"
     # shellcheck disable=SC2064
     trap "cleanup \"$BOOT_IMG\" \"$MNT_DIR\"" EXIT INT
 
@@ -337,4 +340,21 @@ main() {
     # XXX: show how to mount/chroot into the dir to test seeding
 }
 
-main "$1" "$2" "$3"
+# 4th and later are optional local snaps
+# The name of these snaps must be <snap_name>_<version>.snap -
+# snapd is quite picky with the snap filename in the seed and
+# in state files.
+set -x
+BOOT_IMG="${1:-./boot.img}"
+CACHE_DIR="${2:-./cache}"
+MNT_DIR="${3:-./mnt}"
+shift 3 || true
+declare -A IN_SNAP_P IN_SNAP_F
+for sn_p in "$@"; do
+    sn_f=${sn_p##*/}
+    sn_name=${sn_f%%_*}
+    IN_SNAP_P[$sn_name]=$sn_p
+    IN_SNAP_F[$sn_name]=$sn_f
+done
+
+main "$BOOT_IMG" "$CACHE_DIR" "$MNT_DIR"
