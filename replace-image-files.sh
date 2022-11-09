@@ -57,7 +57,7 @@ main() {
 
     # copy kernel.efi with modified initramfs
     subpath=$(readlink "$MNT"/ubuntu-boot/EFI/ubuntu/kernel.efi)
-    cp -a "$CACHE_DIR"/snap-pc-kernel/kernel.efi "$MNT"/ubuntu-boot/EFI/ubuntu/"$subpath"
+    sudo cp -a "$CACHE_DIR"/snap-pc-kernel/kernel.efi "$MNT"/ubuntu-boot/EFI/ubuntu/"$subpath"
 
     # replace snapd in data partition with the one compiled in the test
     data_mnt="$loop"p5
