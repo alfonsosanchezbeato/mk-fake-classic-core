@@ -2,10 +2,9 @@
 
 replace_initramfs_bits() {
     KERNEL_EFI_ORIG="$CACHE_DIR"/snap-pc-kernel/kernel.efi
-    if [ ! -d initrd ]; then
-        objcopy -O binary -j .initrd "$KERNEL_EFI_ORIG" initrd.img
-        unmkinitramfs initrd.img initrd
-    fi
+    rm -rf initrd/
+    objcopy -O binary -j .initrd "$KERNEL_EFI_ORIG" initrd.img
+    unmkinitramfs initrd.img initrd
 
     # Retrieve efi stub from ppa so we can rebuild kernel.efi
     sudo DEBIAN_FRONTEND=noninteractive apt install -y --no-install-recommends ubuntu-dev-tools
@@ -16,8 +15,9 @@ replace_initramfs_bits() {
     dpkg --fsys-tarfile ubuntu-core-initramfs_*.deb |
         tar --wildcards -xf - './usr/lib/ubuntu-core-initramfs/efi/linux*.efi.stub'
 
+    # XXX no main subfolder anymore??
     cp "$SNAPD_BINPATH"/snap-bootstrap initrd/main/usr/lib/snapd/
-    cd initrd/main
+    cd initrd/main/
     find . | cpio --create --quiet --format=newc --owner=0:0 | lz4 -l -7 > ../../initrd.img.new
     cd -
 
@@ -26,7 +26,7 @@ replace_initramfs_bits() {
     objcopy --add-section .linux=linux --change-section-vma .linux=0x2000000 \
             --add-section .initrd=initrd.img.new --change-section-vma .initrd=0x3000000 \
             usr/lib/ubuntu-core-initramfs/efi/linux*.efi.stub \
-            "$KERNEL_EFI_ORIG"
+            kernel.efi
 }
 
 cleanup() {
@@ -57,7 +57,7 @@ main() {
 
     # copy kernel.efi with modified initramfs
     subpath=$(readlink "$MNT"/ubuntu-boot/EFI/ubuntu/kernel.efi)
-    sudo cp -a "$CACHE_DIR"/snap-pc-kernel/kernel.efi "$MNT"/ubuntu-boot/EFI/ubuntu/"$subpath"
+    sudo cp -a kernel.efi "$MNT"/ubuntu-boot/EFI/ubuntu/"$subpath"
 
     # replace snapd in data partition with the one compiled in the test
     data_mnt="$loop"p5
