@@ -21,12 +21,12 @@ get_assets() {
     done
 
     # Change gadget.yaml
-    # cp gadget.yaml "$CACHE"/snap-pc/meta/
-    # pc_snap_path=$(find "$CACHE" -mindepth 1 -maxdepth 1 -name 'pc_*.snap')
-    # snap pack --filename="$pc_snap_path" "$CACHE"/snap-pc
+    cp gadget.yaml "$CACHE"/snap-pc/meta/
+    pc_snap_path=$(find "$CACHE" -mindepth 1 -maxdepth 1 -name 'pc_*.snap')
+    ~/go/src/github.com/snapcore/snapd/snapcmd pack --filename="$pc_snap_path" "$CACHE"/snap-pc
 
     # get the ubuntu classic base
-    (cd "$CACHE" && wget -c http://cdimage.ubuntu.com/ubuntu-base/releases/22.04/release/ubuntu-base-22.04-base-amd64.tar.gz)
+    (cd "$CACHE" && wget -c http://cdimage.ubuntu.com/ubuntu-base/releases/22.04/release/ubuntu-base-22.04.1-base-amd64.tar.gz)
 }
 
 cleanup() {
@@ -87,7 +87,7 @@ install_data_partition() {
     done
 
     # Copy base filesystem
-    sudo tar -C "$DESTDIR" -xf "$CACHE"/ubuntu-base-22.04-base-amd64.tar.gz
+    sudo tar -C "$DESTDIR" -xf "$CACHE"/ubuntu-base-22.04.1-base-amd64.tar.gz
 
     # Create basic devices to be able to install packages
     [ -e "$DESTDIR"/dev/null ] || sudo mknod -m 666 "$DESTDIR"/dev/null c 1 3
@@ -153,7 +153,8 @@ EOF
     sudo cp "${SNAP_P[kernel]}" "${SNAP_P[gadget]}" \
          "$DESTDIR"/var/lib/snapd/snaps/
     # create the seed
-    snap prepare-image --classic \
+    rm -rf classic-seed/
+    ~/go/src/github.com/snapcore/snapd/snapcmd prepare-image --classic \
          --channel=edge \
          --snap "${SNAP_P[kernel]}" \
          --snap "${SNAP_P[gadget]}" \
@@ -162,10 +163,10 @@ EOF
          classic-model.assert \
          ./classic-seed
     # rename seed-label
-    mv ./classic-seed/system-seed/systems/"$(date +%Y%m%d)" ./classic-seed/system-seed/systems/"$SEED_LABEL"
+    sudo mv ./classic-seed/system-seed/systems/"$(date +%Y%m%d)" ./classic-seed/system-seed/systems/"$SEED_LABEL"
     # and put the seed in place
     mkdir -p "$DESTDIR"/var/lib/snapd/
-    mv ./classic-seed/system-seed "$DESTDIR"/var/lib/snapd/seed
+    sudo mv ./classic-seed/system-seed "$DESTDIR"/var/lib/snapd/seed
 }
 
 populate_image() {
